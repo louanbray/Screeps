@@ -17,15 +17,26 @@ def playsound():
     print("Done!\n")
 
 # global constants
+# support --fast / -f anywhere in args
+args = sys.argv[1:]
+FAST_FORWARD = False
+if '--fast' in args:
+    FAST_FORWARD = True
+    args.remove('--fast')
+if '-f' in args:
+    FAST_FORWARD = True
+    args.remove('-f')
+
 try:
-    MAPNAME   = sys.argv[1]
-    MAX_TURNS = int(sys.argv[2])
-    DT = float(sys.argv[3])
-    N_PLAYERS = len(sys.argv)-4
+    MAPNAME   = args[0]
+    MAX_TURNS = int(args[1])
+    DT = float(args[2])
+    PLAYER_ARGS = args[3:]
+    N_PLAYERS = len(PLAYER_ARGS)
     MAPLEN    = 0
     assert(N_PLAYERS>0)
 except:
-    print("Usage : python run___.py <mapName> <maxTurns> <initial_DT> <players>",file=sys.stderr)
+    print("Usage : python run___.py <mapName> <maxTurns> <initial_DT> <players> [--fast]",file=sys.stderr)
     assert 0
 map = []
 ''' map = (string * int * int | int array) array array --> (tileName, resource, tileMeta) '''
@@ -43,6 +54,14 @@ PLAYER_COLOR = ["#dd0000", "#dddd00", "#00dd00", "#6666ff"]
 PLAYER_COLOR_2 = ["#dd8888", "#dddd88", "#88dd88", "#aaaaff"]
 HALT=False
 
+# drawing frequency: draw every DRAW_EVERY turns (1 = every turn)
+DRAW_EVERY = 1
+
+# if started with --fast, use sparser drawing and no delay
+if FAST_FORWARD:
+    DT = 0.0
+    DRAW_EVERY = 5
+
 # player-related constants
 PLAYER_RSCS = [20 for i in range(N_PLAYERS)]
 PLAYER_CARRY = [0 for i in range(N_PLAYERS)]
@@ -52,7 +71,7 @@ PLAYER_MINIONS=[{} for _ in range(N_PLAYERS)]
 ''' ((x,y > cap,hp,maxCap,atk) dict) array '''
 PLAYER_NAMES = []
 for p in range(N_PLAYERS):
-    pName = sys.argv[4+p]
+    pName = PLAYER_ARGS[p]
     if(pName[0] != '.'):
         pName = "python "+pName
     PLAYER_NAMES.append(pName)
@@ -66,7 +85,7 @@ logFile=open("logFile.txt","w")
 for pname in PLAYER_NAMES:
     assert(
         len(pname) >= 3 and (
-            pname[0] == '.' and pname[1] == "/"     # executable file
+            pname[0] == '.' and (pname[1] == "/" or pname[1] == "\\")     # executable file
         ) or (
             pname[-1] == 'y' and pname[-2] == 'p' and pname[-3] == '.'      # python file
         )
@@ -763,6 +782,8 @@ def popREQueue():
 def onKeyPress(event):
     global DT
     global HALT
+    global FAST_FORWARD
+    global DRAW_EVERY
     #print(f"You pressed {event.char}")
     if(event.char == "+"):
         DT = max(0.02, DT-0.02)
@@ -770,6 +791,14 @@ def onKeyPress(event):
         DT = min(2.0, DT+0.02)
     elif(event.char == " "):
         HALT = not HALT
+    elif(event.char == "f"):
+        FAST_FORWARD = not FAST_FORWARD
+        if FAST_FORWARD:
+            DRAW_EVERY = max(1, DRAW_EVERY*5)
+            DT = 0.0
+        else:
+            DRAW_EVERY = 1
+            DT = 0.1
 
 turnOrder = [i for i in range(N_PLAYERS)]
 def mainLoop():
@@ -821,17 +850,18 @@ def mainLoop():
 
         # log the end of the turn + update the canvas
         print("",file=logFile)
-        if(currentTurn%16==15):
+
+        if currentTurn % (16 * DRAW_EVERY) == (16 * DRAW_EVERY) - 1:
             canvas = refreshCanvas(root,canvas)
             if canvas is None:
                 logFile.close()
                 return
 
-        # drawMap may refresh and return a new canvas
-        canvas = drawMap(root,canvas,currentTurn)
-        if canvas is None:
-            logFile.close()
-            return
+        if currentTurn % DRAW_EVERY == 0:
+            canvas = drawMap(root,canvas,currentTurn)
+            if canvas is None:
+                logFile.close()
+                return
         while(HALT):
             time.sleep(0.4)
             canvas.create_text(WIDTH//2,HEIGHT//2,text="PAUSED",fill="#000000",font=HAL_FONT)
