@@ -190,7 +190,7 @@ def applyBonus(pl_i,x0,y0,xd,yd,mved):
                 # dont forget to put this piece of sh*t before the second condition, otherwise minions will merge and break everything >:/
                 # transfer
                 minTarget=PLAYER_MINIONS[pl_i][(curX+Dx,curY+Dy)]
-                toTransfer=min(minData[0],(1+addCapa)*minTarget[2]-minTarget[0])
+                toTransfer=max(0,min(minData[0],(1+addCapa)*minTarget[2]-minTarget[0]))
                 minData[0] -= toTransfer
                 minTarget[0] += toTransfer
             elif(target == -1):
