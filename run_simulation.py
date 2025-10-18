@@ -1,7 +1,7 @@
 import sys
 import tkinter as tk
 import tkinter.font
-import time, random, os
+import time, random, os, subprocess
 import threading
 
 '''
@@ -25,7 +25,7 @@ try:
     MAPLEN    = 0
     assert(N_PLAYERS>0)
 except:
-    print("Usage : python3 run___.py <mapName> <maxTurns> <initial_DT> <players>",file=sys.stderr)
+    print("Usage : python run___.py <mapName> <maxTurns> <initial_DT> <players>",file=sys.stderr)
     assert 0
 map = []
 ''' map = (string * int * int | int array) array array --> (tileName, resource, tileMeta) '''
@@ -54,7 +54,7 @@ PLAYER_NAMES = []
 for p in range(N_PLAYERS):
     pName = sys.argv[4+p]
     if(pName[0] != '.'):
-        pName = "python3 "+pName
+        pName = "python "+pName
     PLAYER_NAMES.append(pName)
 
 random.shuffle(PLAYER_NAMES)     # random starting points
@@ -349,11 +349,21 @@ def execute_player(pl_i,curTurn):
 
     execGood=False
     try:
-        if os.name == "posix":
-            os.system(pname)
-        elif os.name =="nt":
-            os.system('python '+programme[2:])
-        execGood=True
+        # If the player is a Python script, run it with the same interpreter
+        base, ext = os.path.splitext(pname)
+        if ext.lower() == '.py' or pname.strip().startswith('python '):
+            # prefer to invoke the current Python interpreter to avoid file-association issues
+            if pname.strip().startswith('python '):
+                # user already provided a python prefix; use os.system to respect that form
+                rc = os.system(pname)
+                execGood = (rc == 0)
+            else:
+                # run with the current python executable
+                completed = subprocess.run([sys.executable, pname])
+                execGood = (completed.returncode == 0)
+        else:
+            rc = os.system(pname)
+            execGood = (rc == 0)
     except:
         print(f"Error while executing player {pl_i}'s code ({PLAYER_NAMES[pl_i]}).",file=sys.stderr)
 
@@ -470,7 +480,13 @@ LEA_FONT = ""
 SCO_FONT = ""
 
 def refreshCanvas(root,oldCanvas):
-    oldCanvas.destroy()
+    # safe destroy: if the application has been destroyed, destroy() will raise TclError
+    try:
+        oldCanvas.destroy()
+    except tk.TclError:
+        # can't destroy because app is already destroyed
+        return None
+
     canvas = tk.Canvas(root, width=WIDTH, height=HEIGHT, bg="white")
     canvas.pack()
 
@@ -484,7 +500,25 @@ WOFFS=150
 
 # self explainatory
 def drawMap(root,canvas,curTurn):
-    canvas.create_rectangle(0,0,WIDTH,HEIGHT,fill="#dddddd")
+    # If the provided canvas has been destroyed (invalid Tcl widget), recreate it
+    try:
+        # quick check: try a harmless operation
+        exists = canvas.winfo_exists()
+    except Exception:
+        # likely the application has been destroyed
+        newc = refreshCanvas(root, canvas)
+        return newc
+
+    # also handle the case where winfo_exists() returns false
+    if not exists:
+        newc = refreshCanvas(root, canvas)
+        return newc
+
+    try:
+        canvas.create_rectangle(0,0,WIDTH,HEIGHT,fill="#dddddd")
+    except tk.TclError:
+        # application was destroyed during drawing
+        return None
 
     for i in range(N_PLAYERS):
         py,px=PLAYER_SPAWN[i]
@@ -612,6 +646,9 @@ def drawMap(root,canvas,curTurn):
                 LB_OFF+y0-TILE_SIZE//2,
                 text="+"+str(PLAYER_CARRY[p]),
                 fill="#333333",font=LEA_FONT)
+
+    # return the canvas in case it was recreated inside this function
+    return canvas
 
 # -------------------------| random events |------------------------- #
 randomEventQueue=[]     # this must be sorted in increasing order at all times
@@ -761,7 +798,12 @@ def mainLoop():
     canvas = tk.Canvas(root, width=WIDTH, height=HEIGHT, bg="white")
     canvas.pack()
 
-    drawMap(root,canvas,currentTurn)
+    # drawMap may return a new canvas if it had to refresh it
+    canvas = drawMap(root,canvas,currentTurn)
+    if canvas is None:
+        # GUI gone, exit main loop
+        logFile.close()
+        return
     root.update()
 
     thread = threading.Thread(target=playsound)
@@ -781,8 +823,15 @@ def mainLoop():
         print("",file=logFile)
         if(currentTurn%16==15):
             canvas = refreshCanvas(root,canvas)
-        
-        drawMap(root,canvas,currentTurn)
+            if canvas is None:
+                logFile.close()
+                return
+
+        # drawMap may refresh and return a new canvas
+        canvas = drawMap(root,canvas,currentTurn)
+        if canvas is None:
+            logFile.close()
+            return
         while(HALT):
             time.sleep(0.4)
             canvas.create_text(WIDTH//2,HEIGHT//2,text="PAUSED",fill="#000000",font=HAL_FONT)

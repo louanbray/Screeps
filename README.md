@@ -120,7 +120,7 @@ HP + SIZE + ATK
 Pour générer une carte :
 
 ```bash
-python3 generate_map_advanced.py map.txt 10 5 3 3 5 7
+python generate_map_advanced.py map.txt 10 5 3 3 5 7
 ```
 > Ici, `10` est le demi-côté de la carte.
 
@@ -132,7 +132,7 @@ Elle est paramétrable dans le script de génération (mais pas via les paramèt
 Pour lancer une simulation :
 
 ```bash
-python3 run_simulation.py map.txt 400 0.3 ./bot1 ./bot2 ./bot3 ./bot4
+python run_simulation.py map.txt 400 0.3 ./bot1 ./bot2 ./bot3 ./bot4
 ```
 
 où :

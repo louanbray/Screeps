@@ -1,4 +1,5 @@
-#! /usr/bin/python3
+# -*- coding: utf-8 -*-
+from __future__ import print_function
 from random import choice
 
 CASE_TYPE = 0
@@ -38,7 +39,9 @@ with open("mapData.txt") as mapFile:
     
     minionsJoueurs = {}
     for i in range(m):
-        *minion, = map(int, mapFile.readline().strip().split(","))
+        parts = mapFile.readline().strip().split(",")
+        # convert to ints
+        minion = [int(x) for x in parts]
         if minion[MINION_PROP] in minionsJoueurs:
             minionsJoueurs[minion[MINION_PROP]].append(minion[1:])
         else:
@@ -56,8 +59,8 @@ with open("mapData.txt") as mapFile:
             carte[mX][mY][CASE_TYPE] = TYPE_MOI if jid == id else TYPE_ENNEMI
 
     def enleve_impossibles(cands):
-        *cands, = filter(lambda c:c[0]>=0 and c[1]>=0 and c[0]<n and c[1]<n and carte[c[0]][c[1]][CASE_TYPE]!=TYPE_MUR, cands)
-        return cands
+        # filter and return a concrete list (works on Py2 and Py3)
+        return [c for c in cands if c[0]>=0 and c[1]>=0 and c[0]<n and c[1]<n and carte[c[0]][c[1]][CASE_TYPE]!=TYPE_MUR]
 
     def choix_aleatoire(mX, mY, cands=None):
         if cands!=None:
