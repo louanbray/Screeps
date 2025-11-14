@@ -212,36 +212,36 @@ typedef enum Direction {
 } Direction;
 
 int pos(int x, int y) {
-    return x + y * MAP_LEN;
+    return x * MAP_LEN + y;
 }
 
 void coos(int index, int* xP, int* yP) {
-    int x = index % MAP_LEN;
-    int y = index / MAP_LEN;
+    int x = index / MAP_LEN;
+    int y = index % MAP_LEN;
     if (x < 0 || x >= MAP_LEN || y < 0 || y >= MAP_LEN) return;
     *xP = x;
     *yP = y;
 }
 
 int index_at(int index, Direction dir) {
-    int x = index % MAP_LEN;
-    int y = index / MAP_LEN;
+    int x = index / MAP_LEN;
+    int y = index % MAP_LEN;
 
     // Vérifier les bords pour les déplacements horizontaux
-    if (dir == DROITE && x == MAP_LEN - 1) return -1;
-    if (dir == GAUCHE && x == 0) return -1;
+    if (dir == DROITE && y == MAP_LEN - 1) return -1;
+    if (dir == GAUCHE && y == 0) return -1;
     // Vérifier les bords pour les déplacements verticaux
-    if (dir == BAS && y == MAP_LEN - 1) return -1;
-    if (dir == HAUT && y == 0) return -1;
+    if (dir == BAS && x == MAP_LEN - 1) return -1;
+    if (dir == HAUT && x == 0) return -1;
 
     return index + ((dir % 4 == 0) - (dir % 4 == 1)) + ((dir % 4 == 2) - (dir % 4 == 3)) * MAP_LEN;
 }
 
 int distance(int index_from, int index_to) {
-    int x1 = index_from % MAP_LEN;
-    int y1 = index_from / MAP_LEN;
-    int x2 = index_to % MAP_LEN;
-    int y2 = index_to / MAP_LEN;
+    int x1 = index_from / MAP_LEN;
+    int y1 = index_from % MAP_LEN;
+    int x2 = index_to / MAP_LEN;
+    int y2 = index_to % MAP_LEN;
     return abs(x1 - x2) + abs(y1 - y2);
 }
 
@@ -269,7 +269,7 @@ bool** locate_minions() {
 
     for (int i = 0; i < MINIONS_LEN; i++) {
         minion it = MINIONS[i];
-        tab[it.y][it.x] = true;
+        tab[it.x][it.y] = true;
     }
     return tab;
 }
@@ -283,14 +283,14 @@ node** convert_map_to_graph(tile** map, bool** occupe) {
             nd->t = map[i][j];
             nd->links = malloc(sizeof(int) * 4);
             for (int k = 0; k < 4; k++) {
-                int h = index_at(pos(j, i), k);
+                int h = index_at(pos(i, j), k);
                 nd->links[k] = -1;
                 if (h < 0 || h >= n) continue;
-                int hx = h % MAP_LEN;
-                int hy = h / MAP_LEN;
-                if (map[hy][hx].type != WALL && !occupe[hx][hy]) nd->links[k] = h;
+                int hx = h / MAP_LEN;
+                int hy = h % MAP_LEN;
+                if (map[hx][hy].type != WALL && !occupe[hx][hy]) nd->links[k] = h;
             }
-            g[pos(j, i)] = nd;
+            g[pos(i, j)] = nd;
         }
     }
     return g;
@@ -328,7 +328,7 @@ void swap_minion(int i, int j) {
 int get_minion_index_at(int x, int y) {
     int d = -1;
     for (int i = 0; i < MINIONS_LEN; i++) {
-        if (MINIONS[i].y == x && MINIONS[i].x == y)
+        if (MINIONS[i].x == x && MINIONS[i].y == y)
             d = i;
     }
     return d;
@@ -355,7 +355,7 @@ int path_to(node** g, int index_from, int index_to) {
                 if (!visite[v]) {
                     visite[v] = true;
                     parents[v] = s;
-                    if (v != pos(BaseX, BaseY)) enqueue(q, v);
+                    if (v != pos(18, 18) && v != pos(1, 1) && v != pos(1, 18) && v != pos(18, 1)) enqueue(q, v);
                 }
             }
         }
@@ -401,8 +401,8 @@ int best_resource_cluster_nearby(node** g, int index_from, int search_radius) {
         }
 
         tile t = g[current]->t;
-        if (t.type == RESO && current_dist > 0 && !targeted[current % MAP_LEN][current / MAP_LEN]) {
-            int score = t.amt * 100 / (current_dist * 2);
+        if (t.type == RESO && current_dist >= 0 && !targeted[current / MAP_LEN][current % MAP_LEN] && current != pos(18, 18) && current != pos(1, 1) && current != pos(1, 18) && current != pos(18, 1)) {
+            int score = t.amt * 100 / ((current_dist + 1) * 2);
             if (score > best_cluster_amount) {
                 best_cluster_amount = score;
                 best_cluster_index = current;
@@ -413,7 +413,7 @@ int best_resource_cluster_nearby(node** g, int index_from, int search_radius) {
             if (can_go_to(g, current, i)) {
                 int v = index_at(current, i);
                 if (!visited[v]) {
-                    if (v == pos(BaseX, BaseY)) continue;
+                    if (v == pos(18, 18) || v == pos(1, 1) || v == pos(1, 18) || v == pos(18, 1)) continue;
                     visited[v] = true;
                     distances[v] = current_dist + 1;
                     enqueue(q, v);
@@ -444,8 +444,8 @@ void tick_minions(node** g) {
     for (int i = 0; i < MINIONS_LEN; i++) {
         if (MINIONS[i].owner == ID) {
             minion m = MINIONS[i];
-            int y = m.x;
-            int x = m.y;
+            int x = m.x;
+            int y = m.y;
             if (is_miner(m)) {
                 if (m.carry < m.capacity) {
                     if (g[pos(x, y)]->t.type != RESO || (g[pos(x, y)]->t.type == RESO && g[pos(x, y)]->t.amt == 0)) {
@@ -455,9 +455,9 @@ void tick_minions(node** g) {
                     coos(path_to(g, pos(x, y), pos(BaseX, BaseY)), &x, &y);
                 }
             }
-            fprintf(ptr, "%d %d %d %d\n", m.x, m.y, y, x);
+            fprintf(ptr, "%d %d %d %d\n", m.x, m.y, x, y);
             targeted[x][y] = true;
-            if (m.x != y || m.y != x)
+            if (m.x != x || m.y != y)
                 for (int i = 0; i < 4; i++) {
                     if (index_at(pos(x, y), i) != -1)
                         g[index_at(pos(x, y), i)]->links[mirror(i)] = -1;
@@ -494,7 +494,7 @@ int main() {
     randomEvent* randomEvents;
     int randomEventLen;
     int myID, curTurn, maxTurns;
-    read_data(&map, &MAP_LEN, &MINIONS, &MINIONS_LEN, &randomEvents, &randomEventLen, &ID, &MY_RESOURCES, &BaseY, &BaseX, &curTurn, &maxTurns);
+    read_data(&map, &MAP_LEN, &MINIONS, &MINIONS_LEN, &randomEvents, &randomEventLen, &ID, &MY_RESOURCES, &BaseX, &BaseY, &curTurn, &maxTurns);
     bool** occupe = locate_minions();
     // trie_minions();
     if (occupe[BaseX][BaseY]) swap_minion(get_minion_index_at(BaseX, BaseY), 0);
