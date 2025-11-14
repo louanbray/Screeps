@@ -39,10 +39,12 @@ int WALLS = true;
 int BaseX = -1;
 int BaseY = -1;
 int MY_RESOURCES;
+int MY_MINIONS = 0;
 minion* MINIONS;
 int MINIONS_LEN;
 FILE* ptr;
 bool** targeted;
+int* BASES;
 
 // parsing functions
 int read_int(FILE* ptr) {
@@ -334,6 +336,27 @@ int get_minion_index_at(int x, int y) {
     return d;
 }
 
+int* locate_bases(int BaseX, int BaseY) {
+    int* bases = malloc(sizeof(int) * 4);
+    bases[0] = pos(BaseX, BaseY);
+    bases[1] = pos(MAP_LEN - 1 - BaseX, BaseY);
+    bases[2] = pos(BaseX, MAP_LEN - 1 - BaseY);
+    bases[3] = pos(MAP_LEN - 1 - BaseX, MAP_LEN - 1 - BaseY);
+
+    return bases;
+}
+
+bool is_base(int index) {
+    int x = index / MAP_LEN;
+    int y = index % MAP_LEN;
+    for (int i = 0; i < 4; i++) {
+        if (index == BASES[i]) {
+            return true;
+        }
+    }
+    return false;
+}
+
 int path_to(node** g, int index_from, int index_to) {
     int n = MAP_LEN * MAP_LEN;
     bool* visite = calloc(sizeof(bool), n);
@@ -355,7 +378,7 @@ int path_to(node** g, int index_from, int index_to) {
                 if (!visite[v]) {
                     visite[v] = true;
                     parents[v] = s;
-                    if (v != pos(18, 18) && v != pos(1, 1) && v != pos(1, 18) && v != pos(18, 1)) enqueue(q, v);
+                    if (!is_base(v)) enqueue(q, v);
                 }
             }
         }
@@ -401,7 +424,7 @@ int best_resource_cluster_nearby(node** g, int index_from, int search_radius) {
         }
 
         tile t = g[current]->t;
-        if (t.type == RESO && current_dist >= 0 && !targeted[current / MAP_LEN][current % MAP_LEN] && current != pos(18, 18) && current != pos(1, 1) && current != pos(1, 18) && current != pos(18, 1)) {
+        if (t.type == RESO && current_dist >= 0 && !targeted[current / MAP_LEN][current % MAP_LEN] && !is_base(current)) {
             int score = t.amt * 100 / ((current_dist + 1) * 2);
             if (score > best_cluster_amount) {
                 best_cluster_amount = score;
@@ -413,7 +436,7 @@ int best_resource_cluster_nearby(node** g, int index_from, int search_radius) {
             if (can_go_to(g, current, i)) {
                 int v = index_at(current, i);
                 if (!visited[v]) {
-                    if (v == pos(18, 18) || v == pos(1, 1) || v == pos(1, 18) || v == pos(18, 1)) continue;
+                    if (is_base(v)) continue;
                     visited[v] = true;
                     distances[v] = current_dist + 1;
                     enqueue(q, v);
@@ -450,6 +473,9 @@ void tick_minions(node** g) {
                 if (m.carry < m.capacity) {
                     if (g[pos(x, y)]->t.type != RESO || (g[pos(x, y)]->t.type == RESO && g[pos(x, y)]->t.amt == 0)) {
                         coos(path_to(g, pos(x, y), best_resource_cluster_nearby(g, pos(x, y), 20)), &x, &y);
+                        if (x == m.x && y == m.y && m.carry > 0) {
+                            coos(path_to(g, pos(x, y), pos(BaseX, BaseY)), &x, &y);
+                        }
                     }
                 } else {
                     coos(path_to(g, pos(x, y), pos(BaseX, BaseY)), &x, &y);
@@ -481,6 +507,15 @@ void trie_minions() {
     qsort(MINIONS, MINIONS_LEN, sizeof(minion), comp);
 }
 
+int count_my_minions() {
+    int c = 0;
+    for (int i = 0; i < MINIONS_LEN; i++) {
+        if (MINIONS[i].owner == ID)
+            c++;
+    }
+    return c;
+}
+
 void create_minion() {
     if (MY_RESOURCES < 8)
         fprintf(ptr, "CREATE 1 5 1\n");
@@ -495,6 +530,8 @@ int main() {
     int randomEventLen;
     int myID, curTurn, maxTurns;
     read_data(&map, &MAP_LEN, &MINIONS, &MINIONS_LEN, &randomEvents, &randomEventLen, &ID, &MY_RESOURCES, &BaseX, &BaseY, &curTurn, &maxTurns);
+    MY_MINIONS = count_my_minions();
+    BASES = locate_bases(BaseX, BaseY);
     bool** occupe = locate_minions();
     // trie_minions();
     if (occupe[BaseX][BaseY]) swap_minion(get_minion_index_at(BaseX, BaseY), 0);
