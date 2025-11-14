@@ -218,6 +218,7 @@ int pos(int x, int y) {
 }
 
 void coos(int index, int* xP, int* yP) {
+    if (index == -1) return;
     int x = index / MAP_LEN;
     int y = index % MAP_LEN;
     if (x < 0 || x >= MAP_LEN || y < 0 || y >= MAP_LEN) return;
@@ -228,15 +229,22 @@ void coos(int index, int* xP, int* yP) {
 int index_at(int index, Direction dir) {
     int x = index / MAP_LEN;
     int y = index % MAP_LEN;
-
-    // Vérifier les bords pour les déplacements horizontaux
-    if (dir == DROITE && y == MAP_LEN - 1) return -1;
-    if (dir == GAUCHE && y == 0) return -1;
-    // Vérifier les bords pour les déplacements verticaux
-    if (dir == BAS && x == MAP_LEN - 1) return -1;
-    if (dir == HAUT && x == 0) return -1;
-
-    return index + ((dir % 4 == 0) - (dir % 4 == 1)) + ((dir % 4 == 2) - (dir % 4 == 3)) * MAP_LEN;
+    switch (dir) {
+        case DROITE:
+            if (y == MAP_LEN - 1) return -1;
+            return index + 1;
+        case GAUCHE:
+            if (y == 0) return -1;
+            return index - 1;
+        case BAS:
+            if (x == MAP_LEN - 1) return -1;
+            return index + MAP_LEN;
+        case HAUT:
+            if (x == 0) return -1;
+            return index - MAP_LEN;
+        default:
+            return -1;
+    }
 }
 
 int distance(int index_from, int index_to) {
@@ -265,8 +273,7 @@ Direction mirror(Direction dir) {
 bool** locate_minions() {
     bool** tab = malloc(sizeof(bool*) * MAP_LEN);
     for (int i = 0; i < MAP_LEN; i++) {
-        bool* tmp = calloc(sizeof(bool), MAP_LEN);
-        tab[i] = tmp;
+        tab[i] = calloc(MAP_LEN, sizeof(bool));
     }
 
     for (int i = 0; i < MINIONS_LEN; i++) {
@@ -287,7 +294,7 @@ node** convert_map_to_graph(tile** map, bool** occupe) {
             for (int k = 0; k < 4; k++) {
                 int h = index_at(pos(i, j), k);
                 nd->links[k] = -1;
-                if (h < 0 || h >= n) continue;
+                if (h == -1) continue;
                 int hx = h / MAP_LEN;
                 int hy = h % MAP_LEN;
                 if (map[hx][hy].type != WALL && !occupe[hx][hy]) nd->links[k] = h;
@@ -321,7 +328,7 @@ bool is_miner(minion m) {
 }
 
 void swap_minion(int i, int j) {
-    if (i < 0 || i >= MINIONS_LEN || j < 0 || j > MINIONS_LEN) return;
+    if (i < 0 || i >= MINIONS_LEN || j < 0 || j >= MINIONS_LEN) return;
     minion tmp = MINIONS[i];
     MINIONS[i] = MINIONS[j];
     MINIONS[j] = tmp;
@@ -358,8 +365,9 @@ bool is_base(int index) {
 }
 
 int path_to(node** g, int index_from, int index_to) {
+    if (index_from == index_to) return index_from;
     int n = MAP_LEN * MAP_LEN;
-    bool* visite = calloc(sizeof(bool), n);
+    bool* visite = calloc(n, sizeof(bool));
     int* parents = malloc(sizeof(int) * n);
     for (int i = 0; i < n; i++) {
         parents[i] = -1;
@@ -368,35 +376,39 @@ int path_to(node** g, int index_from, int index_to) {
     queue* q = create_queue();
     enqueue(q, index_from);
     visite[index_from] = true;
-    int k = 0;
+
+    bool found = false;
     while (!is_empty(q)) {
-        k++;
         int s = dequeue(q);
         for (int i = 0; i < 4; i++) {
-            if (can_go_to(g, s, i)) {
-                int v = index_at(s, i);
-                if (!visite[v]) {
-                    visite[v] = true;
-                    parents[v] = s;
-                    if (!is_base(v)) enqueue(q, v);
+            int v = g[s]->links[i];
+            if (v == -1) continue;
+            if (!visite[v]) {
+                visite[v] = true;
+                parents[v] = s;
+                if (v == index_to) {
+                    found = true;
+                    break;
                 }
+                if (!is_base(v)) enqueue(q, v);
             }
         }
+        if (found) break;
     }
-
     free_queue(q);
-    int index_cur = -1;
-    if (visite[index_to]) {
-        index_cur = index_to;
-        while (parents[index_cur] != index_from && parents[index_cur] != -1) {
-            index_cur = parents[index_cur];
-        }
-    }
 
+    int result = -1;
+    if (found) {
+        int index_cur = index_to;
+        while (parents[index_cur] != index_from && parents[index_cur] != -1) index_cur = parents[index_cur];
+        if (parents[index_cur] == index_from)
+            result = index_cur;
+        else if (index_cur == index_from)
+            result = index_to;
+    }
     free(visite);
     free(parents);
-
-    return index_cur;
+    return result;
 }
 
 int best_resource_cluster_nearby(node** g, int index_from, int search_radius) {
@@ -404,7 +416,6 @@ int best_resource_cluster_nearby(node** g, int index_from, int search_radius) {
     int best_cluster_index = -1;
     int best_cluster_amount = -1;
 
-    bool* visited = calloc(sizeof(bool), n);
     int* distances = malloc(sizeof(int) * n);
     for (int i = 0; i < n; i++) {
         distances[i] = -1;
@@ -412,7 +423,6 @@ int best_resource_cluster_nearby(node** g, int index_from, int search_radius) {
 
     queue* q = create_queue();
     enqueue(q, index_from);
-    visited[index_from] = true;
     distances[index_from] = 0;
 
     while (!is_empty(q)) {
@@ -425,7 +435,7 @@ int best_resource_cluster_nearby(node** g, int index_from, int search_radius) {
 
         tile t = g[current]->t;
         if (t.type == RESO && current_dist >= 0 && !targeted[current / MAP_LEN][current % MAP_LEN] && !is_base(current)) {
-            int score = t.amt * 100 / ((current_dist + 1) * 2);
+            int score = t.amt * 50 / ((current_dist + 1));
             if (score > best_cluster_amount) {
                 best_cluster_amount = score;
                 best_cluster_index = current;
@@ -435,9 +445,8 @@ int best_resource_cluster_nearby(node** g, int index_from, int search_radius) {
         for (int i = 0; i < 4; i++) {
             if (can_go_to(g, current, i)) {
                 int v = index_at(current, i);
-                if (!visited[v]) {
+                if (v != -1 && distances[v] == -1) {
                     if (is_base(v)) continue;
-                    visited[v] = true;
                     distances[v] = current_dist + 1;
                     enqueue(q, v);
                 }
@@ -446,7 +455,6 @@ int best_resource_cluster_nearby(node** g, int index_from, int search_radius) {
     }
 
     free_queue(q);
-    free(visited);
     free(distances);
 
     // printf("Scores des ressources autour de la position (id:%d):\n", ID);
