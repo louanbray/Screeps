@@ -414,7 +414,7 @@ int path_to(node** g, int index_from, int index_to) {
 int best_resource_cluster_nearby(node** g, int index_from, int search_radius) {
     int n = MAP_LEN * MAP_LEN;
     int best_cluster_index = -1;
-    int best_cluster_amount = -1;
+    int best_cluster_score = -1;
 
     int* distances = malloc(sizeof(int) * n);
     for (int i = 0; i < n; i++) {
@@ -436,8 +436,8 @@ int best_resource_cluster_nearby(node** g, int index_from, int search_radius) {
         tile t = g[current]->t;
         if (t.type == RESO && current_dist >= 0 && !targeted[current / MAP_LEN][current % MAP_LEN] && !is_base(current)) {
             int score = t.amt * 50 / ((current_dist + 1));
-            if (score > best_cluster_amount) {
-                best_cluster_amount = score;
+            if (score > best_cluster_score) {
+                best_cluster_score = score;
                 best_cluster_index = current;
             }
         }
@@ -481,15 +481,13 @@ void tick_minions(node** g) {
                 if (m.carry < m.capacity) {
                     if (g[pos(x, y)]->t.type != RESO || (g[pos(x, y)]->t.type == RESO && g[pos(x, y)]->t.amt == 0)) {
                         coos(path_to(g, pos(x, y), best_resource_cluster_nearby(g, pos(x, y), 20)), &x, &y);
-                        if (x == m.x && y == m.y && m.carry > 0) {
-                            coos(path_to(g, pos(x, y), pos(BaseX, BaseY)), &x, &y);
-                        }
+                        if (x == m.x && y == m.y && m.carry > 0) coos(path_to(g, pos(x, y), pos(BaseX, BaseY)), &x, &y);
                     }
                 } else {
                     coos(path_to(g, pos(x, y), pos(BaseX, BaseY)), &x, &y);
                 }
             }
-            fprintf(ptr, "%d %d %d %d\n", m.x, m.y, x, y);
+            fprintf(ptr, "%d %d %d %d\n", m.x, m.y, x, y);  //! Fait gaffe si tu fais un file, il faut executer cette ligne que lorsqu'on est sûr de la cible d'un minion.
             targeted[x][y] = true;
             if (m.x != x || m.y != y)
                 for (int i = 0; i < 4; i++) {
@@ -505,7 +503,6 @@ void tick_minions(node** g) {
 // -------------------------
 
 int comp(const void* a, const void* b) {
-    return (rand() % 65536) - 32768;
     minion* m1 = (minion*)a;
     minion* m2 = (minion*)b;
     return distance(pos(BaseX, BaseY), pos(m1->x, m1->y)) - distance(pos(BaseX, BaseY), pos(m2->x, m2->y));
