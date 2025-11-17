@@ -516,14 +516,16 @@ int target_base(node** g, minion m) {
             minion bm = base_minions[i];
             if (bm.x == m.x && bm.y == m.y) continue;
             int d = distance(pos(bm.x, bm.y), pos(BaseX, BaseY));
-            if (d < best_dist) {
+            if (d < best_dist && d < distance(pos(m.x, m.y), pos(BaseX, BaseY))) {
                 best_dist = d;
                 j = i;
             }
         }
         if (j != -1 && best_dist != 65535) {
             coos(path_to(g, pos(m.x, m.y), pos(base_minions[j].x, base_minions[j].y), true), &x, &y);
-        }
+        }  // else {
+        //     coos(path_to(g, pos(x, y), pos(BaseX, BaseY), true), &x, &y);
+        // }
         free(base_minions);
     }
 
@@ -742,7 +744,7 @@ int main() {
     BASES = locate_bases(BaseX, BaseY);
     occupe = locate_minions();
     my_minion_is_here = locate_my_minions();
-    // trie_minions();
+    trie_minions();
     if (occupe[BaseX][BaseY]) swap_minions(get_minion_index_at(BaseX, BaseY), 0);
     node** g = convert_map_to_graph(map, occupe);
     targeted = malloc(sizeof(bool*) * MAP_LEN);
