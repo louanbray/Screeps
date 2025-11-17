@@ -44,11 +44,12 @@ minion* MINIONS;
 int MINIONS_LEN;
 FILE* ptr;
 bool** targeted;
+bool** occupe;
+bool** my_minion_is_here;
 int* BASES;
 
 // my consts -----------------------
-int DELTA_CAPACITY = 2; // tolerance for miners that are almost full
-
+int DELTA_CAPACITY = 0;  // tolerance for miners that are almost full
 
 // parsing functions ------------------
 int read_int(FILE* ptr) {
@@ -289,6 +290,20 @@ bool** locate_minions() {
     return tab;
 }
 
+bool** locate_my_minions() {
+    bool** tab = malloc(sizeof(bool*) * MAP_LEN);
+    for (int i = 0; i < MAP_LEN; i++) {
+        tab[i] = calloc(MAP_LEN, sizeof(bool));
+    }
+
+    for (int i = 0; i < MINIONS_LEN; i++) {
+        minion it = MINIONS[i];
+        if (it.owner != ID) continue;
+        tab[it.x][it.y] = true;
+    }
+    return tab;
+}
+
 node** convert_map_to_graph(tile** map, bool** occupe) {
     int n = MAP_LEN * MAP_LEN;
     node** g = malloc(sizeof(node*) * n);
@@ -370,7 +385,7 @@ bool is_base(int index) {
     return false;
 }
 
-int path_to(node** g, int index_from, int index_to) {
+int path_to(node** g, int index_from, int index_to, bool bypass) {
     if (index_from == index_to) return index_from;
     int n = MAP_LEN * MAP_LEN;
     bool* visite = calloc(n, sizeof(bool));
@@ -388,7 +403,11 @@ int path_to(node** g, int index_from, int index_to) {
         int s = dequeue(q);
         for (int i = 0; i < 4; i++) {
             int v = g[s]->links[i];
-            if (v == -1) continue;
+            if (index_at(s, i) == -1) continue;
+            int x, y;
+            coos(index_at(s, i), &x, &y);
+            if (v == -1 && (!bypass || !my_minion_is_here[x][y])) continue;
+            v = index_at(s, i);
             if (!visite[v]) {
                 visite[v] = true;
                 parents[v] = s;
@@ -447,7 +466,7 @@ int best_resource_cluster_nearby(node** g, int index_from, int search_radius) {
                 best_cluster_index = current;
             }
         }
-        
+
         for (int i = 0; i < 4; i++) {
             if (can_go_to(g, current, i)) {
                 int v = index_at(current, i);
@@ -459,55 +478,88 @@ int best_resource_cluster_nearby(node** g, int index_from, int search_radius) {
             }
         }
     }
-    
+
     free_queue(q);
     free(distances);
-    
+
     // printf("Scores des ressources autour de la position (id:%d):\n", ID);
     // if (!ID)
     //     for (int i = 0; i < MAP_LEN; i++) {
-        //         for (int j = 0; j < MAP_LEN; j++) {
-            //             if (distances[pos(i, j)] <= 0)
-            //                 printf("X | ");
-            //             else
-            //                 printf("%d | ", g[pos(i, j)]->t.amt * 100 / (distances[pos(i, j)] * 2));
-            //         }
-            //         printf("\n");
-            //     }
-            return best_cluster_index;
+    //         for (int j = 0; j < MAP_LEN; j++) {
+    //             if (distances[pos(i, j)] <= 0)
+    //                 printf("X | ");
+    //             else
+    //                 printf("%d | ", g[pos(i, j)]->t.amt * 100 / (distances[pos(i, j)] * 2));
+    //         }
+    //         printf("\n");
+    //     }
+    return best_cluster_index;
+}
+
+int target_base(node** g, minion m) {
+    int x = m.x;
+    int y = m.y;
+    coos(path_to(g, pos(x, y), pos(BaseX, BaseY), false), &x, &y);
+
+    if (x == m.x && y == m.y) {
+        minion* base_minions = malloc(sizeof(minion) * MINIONS_LEN);
+        int len = 0;
+        for (int i = 0; i < MINIONS_LEN; i++) {
+            if (MINIONS[i].owner == ID && distance(pos(MINIONS[i].x, MINIONS[i].y), pos(BaseX, BaseY)) <= 5) {
+                base_minions[len] = MINIONS[i];
+                len++;
+            }
         }
-        
-        void tick_minions(node** g) {
-            for (int i = 0; i < MINIONS_LEN; i++) {
-                if (MINIONS[i].owner == ID) {
+        int j = -1;
+        int best_dist = 65535;
+        for (int i = 0; i < len; i++) {
+            minion bm = base_minions[i];
+            if (bm.x == m.x && bm.y == m.y) continue;
+            int d = distance(pos(bm.x, bm.y), pos(BaseX, BaseY));
+            if (d < best_dist) {
+                best_dist = d;
+                j = i;
+            }
+        }
+        if (j != -1 && best_dist != 65535) {
+            coos(path_to(g, pos(m.x, m.y), pos(base_minions[j].x, base_minions[j].y), true), &x, &y);
+        }
+        free(base_minions);
+    }
+
+    return pos(x, y);
+}
+
+void tick_minions(node** g) {
+    for (int i = 0; i < MINIONS_LEN; i++) {
+        if (MINIONS[i].owner == ID) {
             minion m = MINIONS[i];
             int x = m.x;
             int y = m.y;
             if (is_miner(m)) {
                 if (m.carry < m.capacity) {
                     if (g[pos(x, y)]->t.type != RESO || (g[pos(x, y)]->t.type == RESO && g[pos(x, y)]->t.amt == 0)) {
-                        coos(path_to(g, pos(x, y), best_resource_cluster_nearby(g, pos(x, y), 20)), &x, &y);
-                        if (x == m.x && y == m.y && m.carry > 0) coos(path_to(g, pos(x, y), pos(BaseX, BaseY)), &x, &y);
+                        coos(path_to(g, pos(x, y), best_resource_cluster_nearby(g, pos(x, y), 20), false), &x, &y);
+                        if (x == m.x && y == m.y && m.carry > 0) coos(target_base(g, m), &x, &y);
                     }
                 } else {
-                    coos(path_to(g, pos(x, y), pos(BaseX, BaseY)), &x, &y);
+                    coos(target_base(g, m), &x, &y);
                 }
             }
             fprintf(ptr, "%d %d %d %d\n", m.x, m.y, x, y);  //! Fait gaffe si tu fais un file, il faut executer cette ligne que lorsqu'on est sûr de la cible d'un minion.
             targeted[x][y] = true;
             if (m.x != x || m.y != y)
-            for (int i = 0; i < 4; i++) {
-                if (index_at(pos(x, y), i) != -1)
-                g[index_at(pos(x, y), i)]->links[mirror(i)] = -1;
-                if (index_at(pos(m.x, m.y), i) != -1)
-                g[index_at(pos(m.x, m.y), i)]->links[mirror(i)] = pos(m.x, m.y);
-            }
+                for (int i = 0; i < 4; i++) {
+                    if (index_at(pos(x, y), i) != -1)
+                        g[index_at(pos(x, y), i)]->links[mirror(i)] = -1;
+                    if (index_at(pos(m.x, m.y), i) != -1)
+                        g[index_at(pos(m.x, m.y), i)]->links[mirror(i)] = pos(m.x, m.y);
+                }
         }
     }
 }
 
 // -------------------------
-
 
 int comp(const void* a, const void* b) {
     minion* m1 = (minion*)a;
@@ -536,55 +588,53 @@ void create_minion() {
 }
 
 // LE CHANTIER DE TRAZE -----------------
-
-typedef struct theorical_action { // used for miners :)
-    int minion_pos;    // minion pos
-    int target_x;      // x pos of target
-    int target_y;      // y pos of target
-    int target_index;  // pos of target
-    float score;       // action score
-    bool is_best;      // indicates if action is the best (hmm kinda obvious said like this)
-} theorical_action;
+typedef struct theoretical_action {  // used for miners :)
+    int minion_pos;                  // minion pos
+    int target_x;                    // x pos of target
+    int target_y;                    // y pos of target
+    int target_index;                // pos of target
+    float score;                     // action score
+    bool is_best;                    // indicates if action is the best (hmm kinda obvious said like this)
+} theoretical_action;
 
 float calculate_action_score(node** g, minion m, int resource_index) {
     if (resource_index == -1) return -1.0f;
-    int dist = distance(pos(m.x, m.y), resource_index) + 1; // +1 to avoid division by zero  
+    int dist = distance(pos(m.x, m.y), resource_index) + 1;  // +1 to avoid division by zero
     tile t = g[resource_index]->t;
     int resource_value = t.amt;
     float base_score = (float)resource_value / (float)dist;
-    if (m.carry > 0) base_score *= 1.1f; // prioritize the elderly miners >:)
-    if (resource_value < m.carry) base_score *= 1.2f; // good enough ig
-    if (resource_value == m.carry) base_score *= 1.4f; // perfect if it fills pefectly :D
+    if (m.carry > 0) base_score *= 1.1f;                // prioritize the elderly miners >:)
+    if (resource_value < m.carry) base_score *= 1.2f;   // good enough ig
+    if (resource_value == m.carry) base_score *= 1.4f;  // perfect if it fills perfectly :D
     float capacity_ratio = (float)m.capacity / 10.0f;
-    base_score *= capacity_ratio;    
+    base_score *= capacity_ratio;
 
     // can still add any factor you find necessary here :p
 
     return base_score;
 }
 
-theorical_action find_best_action(node** g, minion m, int minion_ind) {
-    theorical_action action;
+theoretical_action find_best_action(node** g, minion m, int minion_ind) {
+    theoretical_action action;
     action.minion_pos = minion_ind;
     action.score = -1.0f;
     action.is_best = false;
-    
+
     if (is_miner(m)) {
         if (m.carry < m.capacity - DELTA_CAPACITY) {
             int best_resource = best_resource_cluster_nearby(g, pos(m.x, m.y), 20);
             float resource_score = calculate_action_score(g, m, best_resource);
-            
+
             if (resource_score > action.score) {
                 action.target_index = best_resource;
                 coos(best_resource, &action.target_x, &action.target_y);
                 action.score = resource_score;
                 action.is_best = true;
             }
-        }
-        else {
+        } else {
             int base_index = pos(BaseX, BaseY);
             float base_score = calculate_action_score(g, m, base_index);
-            
+
             if (base_score > action.score) {
                 action.target_index = base_index;
                 coos(base_index, &action.target_x, &action.target_y);
@@ -593,15 +643,15 @@ theorical_action find_best_action(node** g, minion m, int minion_ind) {
             }
         }
     }
-    
+
     return action;
 }
 
-void resolve_action_conflicts(theorical_action* actions, int num_actions) {
+void resolve_action_conflicts(theoretical_action* actions, int num_actions) {
     for (int i = 0; i < num_actions - 1; i++) {
         for (int j = i + 1; j < num_actions; j++) {
             if (actions[j].score > actions[i].score) {
-                theorical_action temp = actions[i];
+                theoretical_action temp = actions[i];
                 actions[i] = actions[j];
                 actions[j] = temp;
             }
@@ -621,21 +671,21 @@ void resolve_action_conflicts(theorical_action* actions, int num_actions) {
 
 void tick_minions_with_score(node** g) {
     int my_minions_count = count_my_minions();
-    
-    theorical_action* all_actions = malloc(sizeof(theorical_action) * my_minions_count);
+
+    theoretical_action* all_actions = malloc(sizeof(theoretical_action) * my_minions_count);
     int action_count = 0;
-    
+
     // first time calculating best actions
     for (int i = 0; i < MINIONS_LEN; i++) {
         if (MINIONS[i].owner != ID) continue;
-        theorical_action action = find_best_action(g, MINIONS[i], i);
+        theoretical_action action = find_best_action(g, MINIONS[i], i);
         if (action.is_best) {
             all_actions[action_count++] = action;
         }
     }
-    
+
     resolve_action_conflicts(all_actions, action_count);
-    
+
     // second time to fill in the gaps
     for (int i = 0; i < action_count; i++) {
         if (!all_actions[i].is_best) {
@@ -646,11 +696,11 @@ void tick_minions_with_score(node** g) {
             if (is_miner(m)) {
                 if (m.carry < m.capacity) {
                     if (g[pos(x, y)]->t.type != RESO || (g[pos(x, y)]->t.type == RESO && g[pos(x, y)]->t.amt == 0)) {
-                        coos(path_to(g, pos(x, y), best_resource_cluster_nearby(g, pos(x, y), 20)), &x, &y);
-                        if (x == m.x && y == m.y && m.carry > 0) coos(path_to(g, pos(x, y), pos(BaseX, BaseY)), &x, &y);
+                        coos(path_to(g, pos(x, y), best_resource_cluster_nearby(g, pos(x, y), 20), false), &x, &y);
+                        if (x == m.x && y == m.y && m.carry > 0) coos(path_to(g, pos(x, y), pos(BaseX, BaseY), false), &x, &y);
                     }
                 } else {
-                    coos(path_to(g, pos(x, y), pos(BaseX, BaseY)), &x, &y);
+                    coos(path_to(g, pos(x, y), pos(BaseX, BaseY), false), &x, &y);
                 }
             }
         }
@@ -658,16 +708,16 @@ void tick_minions_with_score(node** g) {
 
     for (int i = 0; i < action_count; i++) {
         if (!all_actions[i].is_best) continue;
-        
+
         minion m = MINIONS[all_actions[i].minion_pos];
-        int next_step = path_to(g, pos(m.x, m.y), all_actions[i].target_index);
-        
+        int next_step = path_to(g, pos(m.x, m.y), all_actions[i].target_index, false);
+
         int next_x = m.x, next_y = m.y;
         coos(next_step, &next_x, &next_y);
-        
+
         fprintf(ptr, "%d %d %d %d\n", m.x, m.y, next_x, next_y);
         targeted[next_x][next_y] = true;
-        
+
         if (m.x != next_x || m.y != next_y) {
             for (int j = 0; j < 4; j++) {
                 if (index_at(pos(next_x, next_y), j) != -1)
@@ -677,15 +727,9 @@ void tick_minions_with_score(node** g) {
             }
         }
     }
-    
+
     free(all_actions);
 }
-
-
-
-
-
-
 
 int main() {
     ptr = fopen("answer.txt", "w");
@@ -696,7 +740,8 @@ int main() {
     read_data(&map, &MAP_LEN, &MINIONS, &MINIONS_LEN, &randomEvents, &randomEventLen, &ID, &MY_RESOURCES, &BaseX, &BaseY, &curTurn, &maxTurns);
     MY_MINIONS = count_my_minions();
     BASES = locate_bases(BaseX, BaseY);
-    bool** occupe = locate_minions();
+    occupe = locate_minions();
+    my_minion_is_here = locate_my_minions();
     // trie_minions();
     if (occupe[BaseX][BaseY]) swap_minions(get_minion_index_at(BaseX, BaseY), 0);
     node** g = convert_map_to_graph(map, occupe);
@@ -704,7 +749,7 @@ int main() {
     for (int i = 0; i < MAP_LEN; i++) targeted[i] = calloc(sizeof(bool), MAP_LEN);
 
     if (MINIONS_LEN > 0)
-        tick_minions_with_score(g);
+        tick_minions(g);
     if (MINIONS_LEN < 44)
         create_minion();
     fclose(ptr);
