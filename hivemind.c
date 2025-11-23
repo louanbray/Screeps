@@ -460,7 +460,7 @@ int best_resource_cluster_nearby(node** g, int index_from, int search_radius) {
 
         tile t = g[current]->t;
         if (t.type == RESO && current_dist >= 0 && !targeted[current / MAP_LEN][current % MAP_LEN] && !is_base(current)) {
-            float score = (t.amt) / ((current_dist + 1)); // - distance(index_from, pos(BaseX, BaseY)) ?? idk
+            float score = (t.amt) / ((current_dist + 1));  // - distance(index_from, pos(BaseX, BaseY)) ?? idk
             if (score > best_cluster_score) {
                 best_cluster_score = score;
                 best_cluster_index = current;
@@ -572,29 +572,30 @@ int count_my_minions() {
 }
 
 int calculate_minion_cost(int atk, int capacity, int hp) {
-    return atk + capacity/2 + hp/2;
+    return atk + capacity / 2 + hp / 2;
 }
 
 int optimal_capacity(tile** map, int baseX, int baseY) {
     int total_dist = 0;
     int resource_count = 0;
-    
+
     for (int i = 0; i < MAP_LEN; i++) {
         for (int j = 0; j < MAP_LEN; j++) {
             if (map[i][j].type == RESO && map[i][j].amt > 0) {
-                total_dist += abs(i - baseX) + abs(j - baseY);;
+                total_dist += abs(i - baseX) + abs(j - baseY);
+                ;
                 resource_count++;
             }
-        } // sharingan, can be modified
+        }  // sharingan, can be modified
     }
     if (resource_count == 0) return 5;
-    
+
     float avg_dist = (float)total_dist / resource_count;
-    int capacity = (int)(avg_dist * 0.35f); // adjust the multiplier as needed
-    
+    int capacity = (int)(avg_dist * 0.35f);  // adjust the multiplier as needed
+
     if (capacity < 4) capacity = 4;
     if (capacity > 12) capacity = 20;
-    
+
     printf("'Optimal capacity': %d\n", capacity);
     if (MY_RESOURCES < calculate_minion_cost(1, capacity, 1)) {
         capacity = (MY_RESOURCES - 2) * 2;
@@ -602,9 +603,9 @@ int optimal_capacity(tile** map, int baseX, int baseY) {
     return capacity;
 }
 
-void create_minion(tile** g) {
+void create_minion(tile** map) {
     if (MY_RESOURCES > 6)
-        fprintf(ptr, "CREATE 1 %d 1\n", optimal_capacity(g, BaseX, BaseY));
+        fprintf(ptr, "CREATE 1 %d 1\n", optimal_capacity(map, BaseX, BaseY));
 }
 
 // LE CHANTIER DE TRAZE -----------------
@@ -771,7 +772,7 @@ int main() {
     if (MINIONS_LEN > 0)
         tick_minions(g);
     if (MINIONS_LEN < 200)
-        create_minion(g);
+        create_minion(map);
     fclose(ptr);
     // best_resource_cluster_nearby(g, pos(BaseX, BaseY), 20);
     // print_t(map);
