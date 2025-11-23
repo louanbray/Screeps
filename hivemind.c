@@ -583,7 +583,6 @@ int optimal_capacity(tile** map, int baseX, int baseY) {
         for (int j = 0; j < MAP_LEN; j++) {
             if (map[i][j].type == RESO && map[i][j].amt > 0) {
                 total_dist += abs(i - baseX) + abs(j - baseY);
-                ;
                 resource_count++;
             }
         }  // sharingan, can be modified
