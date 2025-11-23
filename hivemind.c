@@ -439,7 +439,7 @@ int path_to(node** g, int index_from, int index_to, bool bypass) {
 int best_resource_cluster_nearby(node** g, int index_from, int search_radius) {
     int n = MAP_LEN * MAP_LEN;
     int best_cluster_index = -1;
-    int best_cluster_score = -1;
+    int best_cluster_score = -100;
 
     int* distances = malloc(sizeof(int) * n);
     for (int i = 0; i < n; i++) {
@@ -460,7 +460,7 @@ int best_resource_cluster_nearby(node** g, int index_from, int search_radius) {
 
         tile t = g[current]->t;
         if (t.type == RESO && current_dist >= 0 && !targeted[current / MAP_LEN][current % MAP_LEN] && !is_base(current)) {
-            int score = t.amt * 50 / ((current_dist + 1));
+            float score = (t.amt) / ((current_dist + 1)); // - distance(index_from, pos(BaseX, BaseY)) ?? idk
             if (score > best_cluster_score) {
                 best_cluster_score = score;
                 best_cluster_index = current;
@@ -482,17 +482,6 @@ int best_resource_cluster_nearby(node** g, int index_from, int search_radius) {
     free_queue(q);
     free(distances);
 
-    // printf("Scores des ressources autour de la position (id:%d):\n", ID);
-    // if (!ID)
-    //     for (int i = 0; i < MAP_LEN; i++) {
-    //         for (int j = 0; j < MAP_LEN; j++) {
-    //             if (distances[pos(i, j)] <= 0)
-    //                 printf("X | ");
-    //             else
-    //                 printf("%d | ", g[pos(i, j)]->t.amt * 100 / (distances[pos(i, j)] * 2));
-    //         }
-    //         printf("\n");
-    //     }
     return best_cluster_index;
 }
 
@@ -566,7 +555,7 @@ void tick_minions(node** g) {
 int comp(const void* a, const void* b) {
     minion* m1 = (minion*)a;
     minion* m2 = (minion*)b;
-    return distance(pos(BaseX, BaseY), pos(m1->x, m1->y)) - distance(pos(BaseX, BaseY), pos(m2->x, m2->y));
+    return m1->carry - m2->carry;
 }
 
 void trie_minions() {
@@ -601,10 +590,10 @@ int optimal_capacity(tile** map, int baseX, int baseY) {
     if (resource_count == 0) return 5;
     
     float avg_dist = (float)total_dist / resource_count;
-    int capacity = (int)(avg_dist * 0.45f);
+    int capacity = (int)(avg_dist * 0.35f); // adjust the multiplier as needed
     
-    if (capacity < 5) capacity = 5;
-    if (capacity > 20) capacity = 20;
+    if (capacity < 4) capacity = 4;
+    if (capacity > 12) capacity = 20;
     
     printf("'Optimal capacity': %d\n", capacity);
     if (MY_RESOURCES < calculate_minion_cost(1, capacity, 1)) {
