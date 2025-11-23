@@ -582,11 +582,40 @@ int count_my_minions() {
     return c;
 }
 
-void create_minion() {
-    if (MY_RESOURCES < 8)
-        fprintf(ptr, "CREATE 1 5 1\n");
-    else if (MY_RESOURCES >= 13)
-        fprintf(ptr, "CREATE 2 10 1\n");
+int calculate_minion_cost(int atk, int capacity, int hp) {
+    return atk + capacity/2 + hp/2;
+}
+
+int optimal_capacity(tile** map, int baseX, int baseY) {
+    int total_dist = 0;
+    int resource_count = 0;
+    
+    for (int i = 0; i < MAP_LEN; i++) {
+        for (int j = 0; j < MAP_LEN; j++) {
+            if (map[i][j].type == RESO && map[i][j].amt > 0) {
+                total_dist += abs(i - baseX) + abs(j - baseY);;
+                resource_count++;
+            }
+        } // sharingan, can be modified
+    }
+    if (resource_count == 0) return 5;
+    
+    float avg_dist = (float)total_dist / resource_count;
+    int capacity = (int)(avg_dist * 0.45f);
+    
+    if (capacity < 5) capacity = 5;
+    if (capacity > 20) capacity = 20;
+    
+    printf("'Optimal capacity': %d\n", capacity);
+    if (MY_RESOURCES < calculate_minion_cost(1, capacity, 1)) {
+        capacity = (MY_RESOURCES - 2) * 2;
+    }
+    return capacity;
+}
+
+void create_minion(tile** g) {
+    if (MY_RESOURCES > 6)
+        fprintf(ptr, "CREATE 1 %d 1\n", optimal_capacity(g, BaseX, BaseY));
 }
 
 // LE CHANTIER DE TRAZE -----------------
@@ -752,8 +781,8 @@ int main() {
 
     if (MINIONS_LEN > 0)
         tick_minions(g);
-    if (MINIONS_LEN < 44)
-        create_minion();
+    if (MINIONS_LEN < 200)
+        create_minion(g);
     fclose(ptr);
     // best_resource_cluster_nearby(g, pos(BaseX, BaseY), 20);
     // print_t(map);
