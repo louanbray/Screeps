@@ -594,7 +594,7 @@ int optimal_capacity(tile** map, int baseX, int baseY) {
     int capacity = (int)(avg_dist * 0.35f);  // adjust the multiplier as needed
 
     if (capacity < 4) capacity = 4;
-    if (capacity > 12) capacity = 20;
+    if (capacity >= 12) capacity = 11;
 
     printf("'Optimal capacity': %d\n", capacity);
     if (MY_RESOURCES < calculate_minion_cost(1, capacity, 1)) {
